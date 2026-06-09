@@ -12,7 +12,6 @@ from nltk.stem import WordNetLemmatizer
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Custom CSS for a flat, minimalist UI
 st.markdown("""
     <style>
         .stButton>button {
@@ -21,6 +20,7 @@ st.markdown("""
             color: white !important;
             border: none !important;
             box-shadow: none !important;
+            width: 100%;
         }
         .stTextInput>div>div>input, .stTextArea>div>div>textarea {
             border-radius: 0px !important;
@@ -30,6 +30,15 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
+# --- SESSION STATE INITIALIZATION ---
+# This acts as our "memory" between page reloads
+if "step" not in st.session_state:
+    st.session_state.step = 1
+if "subject" not in st.session_state:
+    st.session_state.subject = ""
+if "content" not in st.session_state:
+    st.session_state.content = ""
 
 # --- NLTK SETUP ---
 @st.cache_resource
@@ -69,59 +78,85 @@ vectorizers, models = load_assets()
 
 # --- APP LAYOUT ---
 st.title("News Article Categorization Engine")
-st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
 
-# --- INTUITIVE INPUT SECTION ---
-st.subheader("Article Details")
-col_input1, col_input2 = st.columns([1, 3])
-
-with col_input1:
-    subject_input = st.text_input("Subject Line (Optional)", placeholder="e.g. Next-gen ion thrusters")
-with col_input2:
-    content_input = st.text_area("Article Body", height=150, placeholder="Paste the full text of the article here...")
-
-st.markdown("---")
-
-# --- MODEL SELECTION ---
-st.subheader("Select Models to Compare")
-col1, col2 = st.columns(2)
-
-with col1:
-    model_1_choice = st.selectbox("Model 1", list(models.keys()), index=0)
-with col2:
-    model_2_choice = st.selectbox("Model 2", list(models.keys()), index=1)
+# ==========================================
+# STEP 1: ARTICLE INPUT
+# ==========================================
+if st.session_state.step == 1:
+    st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
+    st.subheader("Step 1: Article Details")
     
-if st.button("Categorize Text"):
-    if content_input.strip() == "" and subject_input.strip() == "":
-        st.warning("Please enter at least a subject or article body to classify.")
-    else:
+    col_input1, col_input2 = st.columns([1, 3])
+    with col_input1:
+        # Pre-fill with session state in case they hit "Back" later
+        subject_input = st.text_input("Subject Line (Optional)", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
+    with col_input2:
+        content_input = st.text_area("Article Body", height=150, value=st.session_state.content, placeholder="Paste the full text of the article here...")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # We use columns here just to make the Next button a nice size instead of full width
+    _, btn_col, _ = st.columns([2, 1, 2])
+    with btn_col:
+        if st.button("Next ➔"):
+            if content_input.strip() == "" and subject_input.strip() == "":
+                st.warning("Please enter at least a subject or article body to proceed.")
+            else:
+                # Save their inputs to memory, change the step, and reload the page
+                st.session_state.subject = subject_input
+                st.session_state.content = content_input
+                st.session_state.step = 2
+                st.rerun()
+
+# ==========================================
+# STEP 2: MODEL SELECTION & PREDICTION
+# ==========================================
+elif st.session_state.step == 2:
+    st.subheader("Step 2: Select Models to Compare")
+    
+    # Show a brief preview of what they submitted so they know it worked
+    preview_text = st.session_state.subject if st.session_state.subject else st.session_state.content[:50] + "..."
+    st.caption(f"**Loaded Text:** {preview_text}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        model_1_choice = st.selectbox("Model 1", list(models.keys()), index=0)
+    with col2:
+        model_2_choice = st.selectbox("Model 2", list(models.keys()), index=1)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        if st.button("⬅ Back to Edit Text"):
+            st.session_state.step = 1
+            st.rerun()
+    with col_btn2:
+        predict_clicked = st.button("Categorize Text ✨")
+        
+    if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
             
-            # Combine subject and content logically for the model
-            combined_raw_text = f"Subject: {subject_input}\n\n{content_input}"
+            # Pull text from session state memory
+            combined_raw_text = f"Subject: {st.session_state.subject}\n\n{st.session_state.content}"
             cleaned_text = clean_text(combined_raw_text)
             
-            # Helper function to get predictions and probabilities
+            # Helper function
             def get_inference(model_name):
                 vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
                 vec = vectorizers[vec_name]
                 mod = models[model_name]
                 
                 vectorized_text = vec.transform([cleaned_text])
-                
-                # Get the actual predicted string
                 prediction = mod.predict(vectorized_text)[0]
-                
-                # Get the probability array and match it to class names
                 probs = mod.predict_proba(vectorized_text)[0]
                 classes = mod.classes_
-                
                 return prediction, probs, classes
 
             pred_1, probs_1, classes_1 = get_inference(model_1_choice)
             pred_2, probs_2, classes_2 = get_inference(model_2_choice)
             
-            # --- DISPLAY PREDICTIONS ---
+            st.markdown("---")
             st.markdown("### Final Predictions")
             res_col1, res_col2 = st.columns(2)
             with res_col1:
@@ -132,9 +167,7 @@ if st.button("Categorize Text"):
             st.markdown("---")
             st.markdown("### Dynamic Output Visualizations")
             
-            # Process Data for Top 5 Probabilities
             def get_top_5_df(probs, classes):
-                # Get indices of the top 5 probabilities
                 top_5_idx = np.argsort(probs)[-5:][::-1]
                 return pd.DataFrame({
                     'Category': classes[top_5_idx],
@@ -146,28 +179,23 @@ if st.button("Categorize Text"):
 
             vis_col1, vis_col2 = st.columns(2)
             
-            # Visualization 1: Model 1 Probability Distribution
             with vis_col1:
-                st.markdown(f"**1. {model_1_choice}: Top 5 Category Probabilities**")
+                st.markdown(f"**1. {model_1_choice}: Top 5 Probabilities**")
                 fig1, ax1 = plt.subplots(figsize=(6, 4))
                 sns.barplot(x="Confidence (%)", y="Category", data=df1_top5, palette="Blues_r", ax=ax1)
                 ax1.set_xlim(0, 100)
                 plt.tight_layout()
                 st.pyplot(fig1)
 
-            # Visualization 2: Model 2 Probability Distribution
             with vis_col2:
-                st.markdown(f"**2. {model_2_choice}: Top 5 Category Probabilities**")
+                st.markdown(f"**2. {model_2_choice}: Top 5 Probabilities**")
                 fig2, ax2 = plt.subplots(figsize=(6, 4))
                 sns.barplot(x="Confidence (%)", y="Category", data=df2_top5, palette="Greens_r", ax=ax2)
                 ax2.set_xlim(0, 100)
                 plt.tight_layout()
                 st.pyplot(fig2)
 
-            # Visualization 3: Head-to-Head Confidence Comparison
             st.markdown("**3. Head-to-Head Top Choice Confidence Comparison**")
-            
-            # Get the confidence percentage of each model's top pick
             top_conf_1 = df1_top5.iloc[0]['Confidence (%)']
             top_conf_2 = df2_top5.iloc[0]['Confidence (%)']
             
@@ -180,7 +208,6 @@ if st.button("Categorize Text"):
             sns.barplot(x="Confidence on Primary Choice (%)", y="Model", data=comparison_df, palette="dark:gray", ax=ax3)
             ax3.set_xlim(0, 100)
             
-            # Add text labels to the bars
             for index, value in enumerate(comparison_df['Confidence on Primary Choice (%)']):
                 ax3.text(value + 1, index, f'{value:.1f}%', va='center')
                 
