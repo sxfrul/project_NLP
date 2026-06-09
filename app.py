@@ -86,7 +86,7 @@ st.title("AI News Article Categorizer")
 # ==========================================
 if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
-    st.subheader("Step 1: Article Details")
+    st.subheader("Fill in Article Details")
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
@@ -116,7 +116,7 @@ if st.session_state.step == 1:
 # STEP 2: MODEL SELECTION & PREDICTION
 # ==========================================
 elif st.session_state.step == 2:
-    st.subheader("Step 2: Select Models to Compare")
+    st.subheader("Select Models to Compare")
     
     # Handle Translation before display
     with st.spinner("Preparing text environment..."):
