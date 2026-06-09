@@ -12,7 +12,7 @@ from nltk.stem import WordNetLemmatizer
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Minimalist UI: No gradients, sharp corners, buttons fill their column width
+# Minimalist UI: Removed 'width: 100%' so Streamlit's native container width can handle it cleanly
 st.markdown("""
     <style>
         .stButton>button {
@@ -21,7 +21,6 @@ st.markdown("""
             color: white !important;
             border: none !important;
             box-shadow: none !important;
-            width: 100%;
         }
         .stTextInput>div>div>input, .stTextArea>div>div>textarea {
             border-radius: 0px !important;
@@ -86,22 +85,20 @@ if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
     st.subheader("Step 1: Article Details")
     
-    # Vertically stacked, full-width inputs
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Create a placeholder for the warning BEFORE the columns so it doesn't break layout
     warning_placeholder = st.empty()
     
-    # Layout: Spacer on the left, button on the far right (ratio 5:1)
-    spacer, btn_col = st.columns([5, 1])
+    # Aggressive ratio: 8.5 parts empty space, 1.5 parts button
+    spacer, btn_col = st.columns([8.5, 1.5])
     with btn_col:
-        next_clicked = st.button("Next ➔")
+        # use_container_width=True forces it to fill the tight 1.5 column cleanly
+        next_clicked = st.button("Next ➔", use_container_width=True)
         
     if next_clicked:
-        # Strictly require BOTH fields
         if subject_input.strip() == "" or content_input.strip() == "":
             warning_placeholder.warning("Please enter both a Subject Line and Article Body to proceed.")
         else:
@@ -127,16 +124,16 @@ elif st.session_state.step == 2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Layout: Back button far left (1), massive spacer in middle (4), Predict button far right (1)
-    col_btn_back, spacer_mid, col_btn_predict = st.columns([1, 4, 1])
+    # Aggressive ratio: Buttons pinned to outer 15% edges, massive 70% void in the middle
+    col_btn_back, spacer_mid, col_btn_predict = st.columns([1.5, 7, 1.5])
     
     with col_btn_back:
-        if st.button("⬅ Back"):
+        if st.button("⬅ Back", use_container_width=True):
             st.session_state.step = 1
             st.rerun()
             
     with col_btn_predict:
-        predict_clicked = st.button("Categorize ✨")
+        predict_clicked = st.button("Categorize ✨", use_container_width=True)
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
