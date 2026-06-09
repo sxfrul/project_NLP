@@ -79,7 +79,7 @@ def load_assets():
 vectorizers, models = load_assets()
 
 # --- APP LAYOUT ---
-st.title("News Article Categorization Engine")
+st.title("AI News Article Categorizer")
 
 # ==========================================
 # STEP 1: ARTICLE INPUT
@@ -147,7 +147,7 @@ elif st.session_state.step == 2:
             st.rerun()
             
     with col_btn_predict:
-        predict_clicked = st.button("Categorize ✨", use_container_width=True)
+        predict_clicked = st.button("Predict", use_container_width=True)
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
