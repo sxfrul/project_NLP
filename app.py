@@ -12,7 +12,7 @@ from nltk.stem import WordNetLemmatizer
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Minimalist UI: No gradients, sharp corners
+# Minimalist UI: No gradients, sharp corners, buttons fill their column width
 st.markdown("""
     <style>
         .stButton>button {
@@ -92,8 +92,8 @@ if st.session_state.step == 1:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Pushing the "Next" button to the bottom right
-    spacer, btn_col = st.columns([7, 1])
+    # Layout: Massive spacer on the left, button on the far right
+    spacer, btn_col = st.columns([6, 1])
     with btn_col:
         if st.button("Next ➔"):
             if content_input.strip() == "" and subject_input.strip() == "":
@@ -121,8 +121,9 @@ elif st.session_state.step == 2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Grouping both buttons to the bottom right
-    spacer, col_btn_back, col_btn_predict = st.columns([6, 1.5, 1.5])
+    # Layout: Back button far left, massive spacer in middle, Predict button far right
+    # The [1, 5, 1.5] ratio gives the 'Categorize' button a tiny bit more room since the word is longer.
+    col_btn_back, spacer_mid, col_btn_predict = st.columns([1, 5, 1.5])
     
     with col_btn_back:
         if st.button("⬅ Back"):
