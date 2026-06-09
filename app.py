@@ -12,7 +12,7 @@ from nltk.stem import WordNetLemmatizer
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Custom CSS for a flat, minimalist UI (no gradients, square borders)
+# Custom CSS for a flat, minimalist UI
 st.markdown("""
     <style>
         .stButton>button {
@@ -69,86 +69,120 @@ vectorizers, models = load_assets()
 
 # --- APP LAYOUT ---
 st.title("News Article Categorization Engine")
-st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP and Machine Learning.")
+st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
 
-tab1, tab2 = st.tabs(["Prediction & Comparison", "Model Visualizations"])
+# --- INTUITIVE INPUT SECTION ---
+st.subheader("Article Details")
+col_input1, col_input2 = st.columns([1, 3])
 
-# ==========================================
-# TAB 1: PREDICTION AND COMPARISON
-# ==========================================
-with tab1:
-    st.header("Live Text Inference")
-    user_input = st.text_area("Paste article text or subject here:", height=150)
+with col_input1:
+    subject_input = st.text_input("Subject Line (Optional)", placeholder="e.g. Next-gen ion thrusters")
+with col_input2:
+    content_input = st.text_area("Article Body", height=150, placeholder="Paste the full text of the article here...")
+
+st.markdown("---")
+
+# --- MODEL SELECTION ---
+st.subheader("Select Models to Compare")
+col1, col2 = st.columns(2)
+
+with col1:
+    model_1_choice = st.selectbox("Model 1", list(models.keys()), index=0)
+with col2:
+    model_2_choice = st.selectbox("Model 2", list(models.keys()), index=1)
     
-    st.subheader("Select Models to Compare")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        model_1_choice = st.selectbox("Model 1", list(models.keys()), index=0)
-    with col2:
-        model_2_choice = st.selectbox("Model 2", list(models.keys()), index=1)
-        
-    if st.button("Categorize Text"):
-        if user_input.strip() == "":
-            st.warning("Please enter some text to classify.")
-        else:
-            with st.spinner("Processing..."):
-                cleaned_text = clean_text(user_input)
+if st.button("Categorize Text"):
+    if content_input.strip() == "" and subject_input.strip() == "":
+        st.warning("Please enter at least a subject or article body to classify.")
+    else:
+        with st.spinner("Analyzing text and generating dynamic visualizations..."):
+            
+            # Combine subject and content logically for the model
+            combined_raw_text = f"Subject: {subject_input}\n\n{content_input}"
+            cleaned_text = clean_text(combined_raw_text)
+            
+            # Helper function to get predictions and probabilities
+            def get_inference(model_name):
+                vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
+                vec = vectorizers[vec_name]
+                mod = models[model_name]
                 
-                # Helper function to predict
-                def get_prediction(model_name):
-                    vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
-                    vec = vectorizers[vec_name]
-                    mod = models[model_name]
-                    vectorized_text = vec.transform([cleaned_text])
-                    return mod.predict(vectorized_text)[0]
+                vectorized_text = vec.transform([cleaned_text])
                 
-                pred_1 = get_prediction(model_1_choice)
-                pred_2 = get_prediction(model_2_choice)
+                # Get the actual predicted string
+                prediction = mod.predict(vectorized_text)[0]
                 
-                st.markdown("---")
-                res_col1, res_col2 = st.columns(2)
-                with res_col1:
-                    st.success(f"**{model_1_choice}** predicts:\n### {pred_1}")
-                with res_col2:
-                    st.info(f"**{model_2_choice}** predicts:\n### {pred_2}")
+                # Get the probability array and match it to class names
+                probs = mod.predict_proba(vectorized_text)[0]
+                classes = mod.classes_
+                
+                return prediction, probs, classes
 
-# ==========================================
-# TAB 2: VISUALIZATIONS
-# ==========================================
-with tab2:
-    st.header("Evaluation Metrics")
-    
-    # 1. Hardcoded Performance Data (matching your checkpoint)
-    # Alternatively, you can read this from a CSV if you saved it in Colab
-    perf_data = pd.DataFrame({
-        "Model": ["TF-IDF + NB", "TF-IDF + LR", "BoW + NB", "BoW + LR"],
-        "Accuracy": [0.83, 0.88, 0.81, 0.87], # Replace with your actual Colab output numbers
-        "F1-Score": [0.82, 0.88, 0.80, 0.87]  # Replace with your actual Colab output numbers
-    })
-    
-    vis_col1, vis_col2 = st.columns(2)
-    
-    # Visualization 1: Accuracy Comparison
-    with vis_col1:
-        st.subheader("1. Accuracy Comparison")
-        fig1, ax1 = plt.subplots(figsize=(6, 4))
-        sns.barplot(x="Accuracy", y="Model", data=perf_data, palette="Blues_d", ax=ax1)
-        ax1.set_xlim(0.7, 1.0)
-        st.pyplot(fig1)
+            pred_1, probs_1, classes_1 = get_inference(model_1_choice)
+            pred_2, probs_2, classes_2 = get_inference(model_2_choice)
+            
+            # --- DISPLAY PREDICTIONS ---
+            st.markdown("### Final Predictions")
+            res_col1, res_col2 = st.columns(2)
+            with res_col1:
+                st.success(f"**{model_1_choice}** predicts:\n### {pred_1}")
+            with res_col2:
+                st.info(f"**{model_2_choice}** predicts:\n### {pred_2}")
 
-    # Visualization 2: F1-Score Comparison
-    with vis_col2:
-        st.subheader("2. F1-Score Comparison")
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        sns.barplot(x="F1-Score", y="Model", data=perf_data, palette="Greens_d", ax=ax2)
-        ax2.set_xlim(0.7, 1.0)
-        st.pyplot(fig2)
+            st.markdown("---")
+            st.markdown("### Dynamic Output Visualizations")
+            
+            # Process Data for Top 5 Probabilities
+            def get_top_5_df(probs, classes):
+                # Get indices of the top 5 probabilities
+                top_5_idx = np.argsort(probs)[-5:][::-1]
+                return pd.DataFrame({
+                    'Category': classes[top_5_idx],
+                    'Confidence (%)': probs[top_5_idx] * 100
+                })
 
-    # Visualization 3: Feature Matrix Sparsity (Visualizing the Vectorizers)
-    st.subheader("3. Vocabulary Size (Max Features)")
-    fig3, ax3 = plt.subplots(figsize=(8, 2))
-    vocab_data = {"TF-IDF": 5000, "Bag of Words": 5000}
-    ax3.barh(list(vocab_data.keys()), list(vocab_data.values()), color=['#2E2E2E', '#5E5E5E'])
-    ax3.set_xlabel("Number of Features Extracted")
-    st.pyplot(fig3)
+            df1_top5 = get_top_5_df(probs_1, classes_1)
+            df2_top5 = get_top_5_df(probs_2, classes_2)
+
+            vis_col1, vis_col2 = st.columns(2)
+            
+            # Visualization 1: Model 1 Probability Distribution
+            with vis_col1:
+                st.markdown(f"**1. {model_1_choice}: Top 5 Category Probabilities**")
+                fig1, ax1 = plt.subplots(figsize=(6, 4))
+                sns.barplot(x="Confidence (%)", y="Category", data=df1_top5, palette="Blues_r", ax=ax1)
+                ax1.set_xlim(0, 100)
+                plt.tight_layout()
+                st.pyplot(fig1)
+
+            # Visualization 2: Model 2 Probability Distribution
+            with vis_col2:
+                st.markdown(f"**2. {model_2_choice}: Top 5 Category Probabilities**")
+                fig2, ax2 = plt.subplots(figsize=(6, 4))
+                sns.barplot(x="Confidence (%)", y="Category", data=df2_top5, palette="Greens_r", ax=ax2)
+                ax2.set_xlim(0, 100)
+                plt.tight_layout()
+                st.pyplot(fig2)
+
+            # Visualization 3: Head-to-Head Confidence Comparison
+            st.markdown("**3. Head-to-Head Top Choice Confidence Comparison**")
+            
+            # Get the confidence percentage of each model's top pick
+            top_conf_1 = df1_top5.iloc[0]['Confidence (%)']
+            top_conf_2 = df2_top5.iloc[0]['Confidence (%)']
+            
+            comparison_df = pd.DataFrame({
+                'Model': [model_1_choice, model_2_choice],
+                'Confidence on Primary Choice (%)': [top_conf_1, top_conf_2]
+            })
+
+            fig3, ax3 = plt.subplots(figsize=(10, 3))
+            sns.barplot(x="Confidence on Primary Choice (%)", y="Model", data=comparison_df, palette="dark:gray", ax=ax3)
+            ax3.set_xlim(0, 100)
+            
+            # Add text labels to the bars
+            for index, value in enumerate(comparison_df['Confidence on Primary Choice (%)']):
+                ax3.text(value + 1, index, f'{value:.1f}%', va='center')
+                
+            plt.tight_layout()
+            st.pyplot(fig3)
