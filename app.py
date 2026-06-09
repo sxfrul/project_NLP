@@ -9,11 +9,12 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from deep_translator import GoogleTranslator
+from wordcloud import WordCloud
 
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Minimalist UI: No gradients, sharp corners, buttons fill their column width
+# Minimalist UI: Strict square borders, solid colors, no gradients
 st.markdown("""
     <style>
         .stButton>button {
@@ -27,6 +28,9 @@ st.markdown("""
             border-radius: 0px !important;
         }
         .css-1d391kg, .css-1n76uvr {
+            border-radius: 0px !important;
+        }
+        div[data-baseweb="tab-list"] {
             border-radius: 0px !important;
         }
     </style>
@@ -78,20 +82,56 @@ def load_assets():
 
 vectorizers, models = load_assets()
 
+# --- HELPER FUNCTIONS FOR ADVANCED VISUALS ---
+def get_feature_importance(model, vectorizer, class_name, top_n=20):
+    class_index = list(model.classes_).index(class_name)
+    feature_names = vectorizer.get_feature_names_out()
+    
+    # Extract weights based on model type
+    if hasattr(model, 'coef_'): # Logistic Regression
+        importance = model.coef_[class_index]
+    elif hasattr(model, 'feature_log_prob_'): # Naive Bayes
+        importance = np.exp(model.feature_log_prob_[class_index])
+    else:
+        return pd.DataFrame()
+
+    top_indices = np.argsort(importance)[-top_n:][::-1]
+    return pd.DataFrame({
+        'Word': feature_names[top_indices],
+        'Weight': importance[top_indices]
+    })
+
+def generate_wordcloud(feature_df):
+    word_freq = dict(zip(feature_df['Word'], feature_df['Weight']))
+    wc = WordCloud(width=800, height=400, background_color='white', colormap='viridis').generate_from_frequencies(word_freq)
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.imshow(wc, interpolation='bilinear')
+    ax.axis('off')
+    return fig
+
+# Hardcoded distribution of the 20 Newsgroups training set for rapid visualization
+dataset_distribution = {
+    'alt.atheism': 480, 'comp.graphics': 584, 'comp.os.ms-windows.misc': 591,
+    'comp.sys.ibm.pc.hardware': 590, 'comp.sys.mac.hardware': 578, 'comp.windows.x': 593,
+    'misc.forsale': 585, 'rec.autos': 594, 'rec.motorcycles': 598, 'rec.sport.baseball': 597,
+    'rec.sport.hockey': 600, 'sci.crypt': 595, 'sci.electronics': 591, 'sci.med': 594,
+    'sci.space': 593, 'soc.religion.christian': 599, 'talk.politics.guns': 546,
+    'talk.politics.mideast': 564, 'talk.politics.misc': 465, 'talk.religion.misc': 377
+}
+
 # --- APP LAYOUT ---
-st.title("AI News Article Categorizer")
+st.title("News Article Categorization Engine")
 
 # ==========================================
 # STEP 1: ARTICLE INPUT
 # ==========================================
 if st.session_state.step == 1:
-    st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
-    st.subheader("Fill in Article Details")
+    st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP pipelines.")
+    st.subheader("Step 1: Article Details")
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
     
-    # Toggle for Translation
     translate_toggle = st.checkbox("Auto-translate to English before processing", value=st.session_state.translate)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -116,9 +156,8 @@ if st.session_state.step == 1:
 # STEP 2: MODEL SELECTION & PREDICTION
 # ==========================================
 elif st.session_state.step == 2:
-    st.subheader("Select Models to Compare")
+    st.subheader("Step 2: Select Models to Compare")
     
-    # Handle Translation before display
     with st.spinner("Preparing text environment..."):
         display_subject = st.session_state.subject
         display_content = st.session_state.content
@@ -147,12 +186,11 @@ elif st.session_state.step == 2:
             st.rerun()
             
     with col_btn_predict:
-        predict_clicked = st.button("Predict", use_container_width=True)
+        predict_clicked = st.button("Categorize ✨", use_container_width=True)
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
             
-            # Use the translated text if toggle was active, else use original
             combined_raw_text = f"Subject: {display_subject}\n\n{display_content}"
             cleaned_text = clean_text(combined_raw_text)
             
@@ -165,10 +203,10 @@ elif st.session_state.step == 2:
                 prediction = mod.predict(vectorized_text)[0]
                 probs = mod.predict_proba(vectorized_text)[0]
                 classes = mod.classes_
-                return prediction, probs, classes
+                return prediction, probs, classes, vec, mod
 
-            pred_1, probs_1, classes_1 = get_inference(model_1_choice)
-            pred_2, probs_2, classes_2 = get_inference(model_2_choice)
+            pred_1, probs_1, classes_1, vec_1, mod_1 = get_inference(model_1_choice)
+            pred_2, probs_2, classes_2, vec_2, mod_2 = get_inference(model_2_choice)
             
             st.markdown("---")
             st.markdown("### Final Predictions")
@@ -179,51 +217,80 @@ elif st.session_state.step == 2:
                 st.info(f"**{model_2_choice}** predicts:\n### {pred_2}")
 
             st.markdown("---")
-            st.markdown("### Dynamic Output Visualizations")
             
-            def get_top_5_df(probs, classes):
-                top_5_idx = np.argsort(probs)[-5:][::-1]
-                return pd.DataFrame({
-                    'Category': classes[top_5_idx],
-                    'Confidence (%)': probs[top_5_idx] * 100
-                })
-
-            df1_top5 = get_top_5_df(probs_1, classes_1)
-            df2_top5 = get_top_5_df(probs_2, classes_2)
-
-            vis_col1, vis_col2 = st.columns(2)
+            # Organize the heavy visualizations into tabs
+            tab1, tab2, tab3 = st.tabs(["📊 Prediction Confidence", "☁️ Word Analysis", "📚 Dataset Insights"])
             
-            with vis_col1:
-                st.markdown(f"**1. {model_1_choice}: Top 5 Probabilities**")
-                fig1, ax1 = plt.subplots(figsize=(6, 4))
-                sns.barplot(x="Confidence (%)", y="Category", data=df1_top5, palette="Blues_r", ax=ax1)
-                ax1.set_xlim(0, 100)
-                plt.tight_layout()
-                st.pyplot(fig1)
+            # --- TAB 1: CONFIDENCE ---
+            with tab1:
+                def get_top_5_df(probs, classes):
+                    top_5_idx = np.argsort(probs)[-5:][::-1]
+                    return pd.DataFrame({
+                        'Category': classes[top_5_idx],
+                        'Confidence (%)': probs[top_5_idx] * 100
+                    })
 
-            with vis_col2:
-                st.markdown(f"**2. {model_2_choice}: Top 5 Probabilities**")
-                fig2, ax2 = plt.subplots(figsize=(6, 4))
-                sns.barplot(x="Confidence (%)", y="Category", data=df2_top5, palette="Greens_r", ax=ax2)
-                ax2.set_xlim(0, 100)
-                plt.tight_layout()
-                st.pyplot(fig2)
+                df1_top5 = get_top_5_df(probs_1, classes_1)
+                df2_top5 = get_top_5_df(probs_2, classes_2)
 
-            st.markdown("**3. Head-to-Head Top Choice Confidence Comparison**")
-            top_conf_1 = df1_top5.iloc[0]['Confidence (%)']
-            top_conf_2 = df2_top5.iloc[0]['Confidence (%)']
-            
-            comparison_df = pd.DataFrame({
-                'Model': [model_1_choice, model_2_choice],
-                'Confidence on Primary Choice (%)': [top_conf_1, top_conf_2]
-            })
-
-            fig3, ax3 = plt.subplots(figsize=(10, 3))
-            sns.barplot(x="Confidence on Primary Choice (%)", y="Model", data=comparison_df, palette="dark:gray", ax=ax3)
-            ax3.set_xlim(0, 100)
-            
-            for index, value in enumerate(comparison_df['Confidence on Primary Choice (%)']):
-                ax3.text(value + 1, index, f'{value:.1f}%', va='center')
+                vis_col1, vis_col2 = st.columns(2)
                 
-            plt.tight_layout()
-            st.pyplot(fig3)
+                with vis_col1:
+                    st.markdown(f"**{model_1_choice}: Top 5 Probabilities**")
+                    fig1, ax1 = plt.subplots(figsize=(6, 4))
+                    sns.barplot(x="Confidence (%)", y="Category", data=df1_top5, palette="Blues_r", ax=ax1)
+                    ax1.set_xlim(0, 100)
+                    plt.tight_layout()
+                    st.pyplot(fig1)
+
+                with vis_col2:
+                    st.markdown(f"**{model_2_choice}: Top 5 Probabilities**")
+                    fig2, ax2 = plt.subplots(figsize=(6, 4))
+                    sns.barplot(x="Confidence (%)", y="Category", data=df2_top5, palette="Greens_r", ax=ax2)
+                    ax2.set_xlim(0, 100)
+                    plt.tight_layout()
+                    st.pyplot(fig2)
+
+            # --- TAB 2: WORD ANALYSIS ---
+            with tab2:
+                st.markdown("Explore which specific words heavily influenced the model's final decision for its predicted category.")
+                
+                feat_col1, feat_col2 = st.columns(2)
+                
+                with feat_col1:
+                    st.markdown(f"**Model 1 Word Importance ({pred_1})**")
+                    df_feat_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=15)
+                    fig_f1, ax_f1 = plt.subplots(figsize=(6, 4))
+                    sns.barplot(x="Weight", y="Word", data=df_feat_1, palette="mako", ax=ax_f1)
+                    plt.tight_layout()
+                    st.pyplot(fig_f1)
+                    
+                    st.markdown("**Model 1 Word Cloud**")
+                    df_wc_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=50)
+                    st.pyplot(generate_wordcloud(df_wc_1))
+
+                with feat_col2:
+                    st.markdown(f"**Model 2 Word Importance ({pred_2})**")
+                    df_feat_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=15)
+                    fig_f2, ax_f2 = plt.subplots(figsize=(6, 4))
+                    sns.barplot(x="Weight", y="Word", data=df_feat_2, palette="crest", ax=ax_f2)
+                    plt.tight_layout()
+                    st.pyplot(fig_f2)
+                    
+                    st.markdown("**Model 2 Word Cloud**")
+                    df_wc_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=50)
+                    st.pyplot(generate_wordcloud(df_wc_2))
+
+            # --- TAB 3: DATASET DISTRIBUTION ---
+            with tab3:
+                st.markdown("**Original Training Data Distribution (20 Newsgroups)**")
+                st.write("This chart visualizes the balanced nature of the foundational training dataset.")
+                
+                dist_df = pd.DataFrame(list(dataset_distribution.items()), columns=['Category', 'Document Count'])
+                dist_df = dist_df.sort_values(by='Document Count', ascending=False)
+                
+                fig_dist, ax_dist = plt.subplots(figsize=(10, 5))
+                sns.barplot(x='Category', y='Document Count', data=dist_df, palette="cubehelix", ax=ax_dist)
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
+                st.pyplot(fig_dist)

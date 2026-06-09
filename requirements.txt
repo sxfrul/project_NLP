@@ -7,3 +7,4 @@ nltk
 scikit-learn
 streamlit
 deep-translator
+wordcloud
