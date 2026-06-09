@@ -12,6 +12,7 @@ from nltk.stem import WordNetLemmatizer
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
+# Minimalist UI: No gradients, sharp corners
 st.markdown("""
     <style>
         .stButton>button {
@@ -32,7 +33,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- SESSION STATE INITIALIZATION ---
-# This acts as our "memory" between page reloads
 if "step" not in st.session_state:
     st.session_state.step = 1
 if "subject" not in st.session_state:
@@ -86,23 +86,19 @@ if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using dynamic probability analysis.")
     st.subheader("Step 1: Article Details")
     
-    col_input1, col_input2 = st.columns([1, 3])
-    with col_input1:
-        # Pre-fill with session state in case they hit "Back" later
-        subject_input = st.text_input("Subject Line (Optional)", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
-    with col_input2:
-        content_input = st.text_area("Article Body", height=150, value=st.session_state.content, placeholder="Paste the full text of the article here...")
+    # Vertically stacked, full-width inputs
+    subject_input = st.text_input("Subject Line (Optional)", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
+    content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # We use columns here just to make the Next button a nice size instead of full width
-    _, btn_col, _ = st.columns([2, 1, 2])
+    # Pushing the "Next" button to the bottom right
+    spacer, btn_col = st.columns([7, 1])
     with btn_col:
         if st.button("Next ➔"):
             if content_input.strip() == "" and subject_input.strip() == "":
                 st.warning("Please enter at least a subject or article body to proceed.")
             else:
-                # Save their inputs to memory, change the step, and reload the page
                 st.session_state.subject = subject_input
                 st.session_state.content = content_input
                 st.session_state.step = 2
@@ -114,8 +110,7 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.subheader("Step 2: Select Models to Compare")
     
-    # Show a brief preview of what they submitted so they know it worked
-    preview_text = st.session_state.subject if st.session_state.subject else st.session_state.content[:50] + "..."
+    preview_text = st.session_state.subject if st.session_state.subject else st.session_state.content[:80] + "..."
     st.caption(f"**Loaded Text:** {preview_text}")
     
     col1, col2 = st.columns(2)
@@ -126,22 +121,23 @@ elif st.session_state.step == 2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("⬅ Back to Edit Text"):
+    # Grouping both buttons to the bottom right
+    spacer, col_btn_back, col_btn_predict = st.columns([6, 1.5, 1.5])
+    
+    with col_btn_back:
+        if st.button("⬅ Back"):
             st.session_state.step = 1
             st.rerun()
-    with col_btn2:
-        predict_clicked = st.button("Categorize Text ✨")
+            
+    with col_btn_predict:
+        predict_clicked = st.button("Categorize ✨")
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
             
-            # Pull text from session state memory
             combined_raw_text = f"Subject: {st.session_state.subject}\n\n{st.session_state.content}"
             cleaned_text = clean_text(combined_raw_text)
             
-            # Helper function
             def get_inference(model_name):
                 vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
                 vec = vectorizers[vec_name]
