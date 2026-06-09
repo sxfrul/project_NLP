@@ -87,22 +87,28 @@ if st.session_state.step == 1:
     st.subheader("Step 1: Article Details")
     
     # Vertically stacked, full-width inputs
-    subject_input = st.text_input("Subject Line (Optional)", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
+    subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Layout: Massive spacer on the left, button on the far right
-    spacer, btn_col = st.columns([6, 1])
+    # Create a placeholder for the warning BEFORE the columns so it doesn't break layout
+    warning_placeholder = st.empty()
+    
+    # Layout: Spacer on the left, button on the far right (ratio 5:1)
+    spacer, btn_col = st.columns([5, 1])
     with btn_col:
-        if st.button("Next ➔"):
-            if content_input.strip() == "" and subject_input.strip() == "":
-                st.warning("Please enter at least a subject or article body to proceed.")
-            else:
-                st.session_state.subject = subject_input
-                st.session_state.content = content_input
-                st.session_state.step = 2
-                st.rerun()
+        next_clicked = st.button("Next ➔")
+        
+    if next_clicked:
+        # Strictly require BOTH fields
+        if subject_input.strip() == "" or content_input.strip() == "":
+            warning_placeholder.warning("Please enter both a Subject Line and Article Body to proceed.")
+        else:
+            st.session_state.subject = subject_input
+            st.session_state.content = content_input
+            st.session_state.step = 2
+            st.rerun()
 
 # ==========================================
 # STEP 2: MODEL SELECTION & PREDICTION
@@ -110,7 +116,7 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.subheader("Step 2: Select Models to Compare")
     
-    preview_text = st.session_state.subject if st.session_state.subject else st.session_state.content[:80] + "..."
+    preview_text = f"Subject: {st.session_state.subject} | Body: {st.session_state.content[:60]}..."
     st.caption(f"**Loaded Text:** {preview_text}")
     
     col1, col2 = st.columns(2)
@@ -121,9 +127,8 @@ elif st.session_state.step == 2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Layout: Back button far left, massive spacer in middle, Predict button far right
-    # The [1, 5, 1.5] ratio gives the 'Categorize' button a tiny bit more room since the word is longer.
-    col_btn_back, spacer_mid, col_btn_predict = st.columns([1, 5, 1.5])
+    # Layout: Back button far left (1), massive spacer in middle (4), Predict button far right (1)
+    col_btn_back, spacer_mid, col_btn_predict = st.columns([1, 4, 1])
     
     with col_btn_back:
         if st.button("⬅ Back"):
