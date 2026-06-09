@@ -6,3 +6,4 @@ joblib
 nltk
 scikit-learn
 streamlit
+deep-translator

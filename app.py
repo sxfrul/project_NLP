@@ -8,11 +8,12 @@ import re
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+from deep_translator import GoogleTranslator
 
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
-# Minimalist UI: Removed 'width: 100%' so Streamlit's native container width can handle it cleanly
+# Minimalist UI: No gradients, sharp corners, buttons fill their column width
 st.markdown("""
     <style>
         .stButton>button {
@@ -38,6 +39,8 @@ if "subject" not in st.session_state:
     st.session_state.subject = ""
 if "content" not in st.session_state:
     st.session_state.content = ""
+if "translate" not in st.session_state:
+    st.session_state.translate = False
 
 # --- NLTK SETUP ---
 @st.cache_resource
@@ -87,15 +90,16 @@ if st.session_state.step == 1:
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
+    
+    # Toggle for Translation
+    translate_toggle = st.checkbox("Auto-translate to English before processing", value=st.session_state.translate)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
     warning_placeholder = st.empty()
     
-    # Aggressive ratio: 8.5 parts empty space, 1.5 parts button
     spacer, btn_col = st.columns([8.5, 1.5])
     with btn_col:
-        # use_container_width=True forces it to fill the tight 1.5 column cleanly
         next_clicked = st.button("Next ➔", use_container_width=True)
         
     if next_clicked:
@@ -104,6 +108,7 @@ if st.session_state.step == 1:
         else:
             st.session_state.subject = subject_input
             st.session_state.content = content_input
+            st.session_state.translate = translate_toggle
             st.session_state.step = 2
             st.rerun()
 
@@ -113,8 +118,18 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.subheader("Step 2: Select Models to Compare")
     
-    preview_text = f"Subject: {st.session_state.subject} | Body: {st.session_state.content[:60]}..."
-    st.caption(f"**Loaded Text:** {preview_text}")
+    # Handle Translation before display
+    with st.spinner("Preparing text environment..."):
+        display_subject = st.session_state.subject
+        display_content = st.session_state.content
+        
+        if st.session_state.translate:
+            translator = GoogleTranslator(source='auto', target='en')
+            display_subject = translator.translate(st.session_state.subject)
+            display_content = translator.translate(st.session_state.content)
+            st.caption(f"**Translated to English:** Subject: {display_subject} | Body: {display_content[:60]}...")
+        else:
+            st.caption(f"**Loaded Text:** Subject: {display_subject} | Body: {display_content[:60]}...")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -124,7 +139,6 @@ elif st.session_state.step == 2:
         
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Aggressive ratio: Buttons pinned to outer 15% edges, massive 70% void in the middle
     col_btn_back, spacer_mid, col_btn_predict = st.columns([1.5, 7, 1.5])
     
     with col_btn_back:
@@ -138,7 +152,8 @@ elif st.session_state.step == 2:
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
             
-            combined_raw_text = f"Subject: {st.session_state.subject}\n\n{st.session_state.content}"
+            # Use the translated text if toggle was active, else use original
+            combined_raw_text = f"Subject: {display_subject}\n\n{display_content}"
             cleaned_text = clean_text(combined_raw_text)
             
             def get_inference(model_name):
