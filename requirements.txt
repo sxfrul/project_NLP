@@ -8,3 +8,5 @@ scikit-learn
 streamlit
 deep-translator
 wordcloud
+transformers
+torch

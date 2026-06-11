@@ -11,6 +11,9 @@ from nltk.stem import WordNetLemmatizer
 from deep_translator import GoogleTranslator
 from wordcloud import WordCloud
 
+# NEW: Import Hugging Face pipeline
+from transformers import pipeline
+
 # --- PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="News Categorizer", layout="wide")
 
@@ -46,6 +49,15 @@ if "content" not in st.session_state:
 if "translate" not in st.session_state:
     st.session_state.translate = False
 
+# Class map for DistilBERT numeric labels
+CLASS_NAMES = [
+    'alt.atheism', 'comp.graphics', 'comp.os.ms-windows.misc', 'comp.sys.ibm.pc.hardware',
+    'comp.sys.mac.hardware', 'comp.windows.x', 'misc.forsale', 'rec.autos',
+    'rec.motorcycles', 'rec.sport.baseball', 'rec.sport.hockey', 'sci.crypt',
+    'sci.electronics', 'sci.med', 'sci.space', 'soc.religion.christian',
+    'talk.politics.guns', 'talk.politics.mideast', 'talk.politics.misc', 'talk.religion.misc'
+]
+
 # --- NLTK SETUP ---
 @st.cache_resource
 def download_nltk_data():
@@ -80,17 +92,30 @@ def load_assets():
     }
     return vectorizers, models
 
+@st.cache_resource(show_spinner="Loading Hugging Face DistilBERT...")
+def load_bert_pipeline():
+    # IMPORTANT: Update this with your actual Hugging Face repo ID
+    model_repo = "sxfrul/distilbert-news-categorizer" 
+    try:
+        classifier = pipeline("text-classification", model=model_repo, tokenizer=model_repo, top_k=5)
+        return classifier
+    except Exception as e:
+        return None
+
 vectorizers, models = load_assets()
+bert_classifier = load_bert_pipeline()
+
+# Add DistilBERT to the selection choices
+model_choices = list(models.keys()) + ["DistilBERT (Deep Learning)"]
 
 # --- HELPER FUNCTIONS FOR ADVANCED VISUALS ---
 def get_feature_importance(model, vectorizer, class_name, top_n=20):
     class_index = list(model.classes_).index(class_name)
     feature_names = vectorizer.get_feature_names_out()
     
-    # Extract weights based on model type
-    if hasattr(model, 'coef_'): # Logistic Regression
+    if hasattr(model, 'coef_'): 
         importance = model.coef_[class_index]
-    elif hasattr(model, 'feature_log_prob_'): # Naive Bayes
+    elif hasattr(model, 'feature_log_prob_'): 
         importance = np.exp(model.feature_log_prob_[class_index])
     else:
         return pd.DataFrame()
@@ -109,7 +134,6 @@ def generate_wordcloud(feature_df):
     ax.axis('off')
     return fig
 
-# Hardcoded distribution of the 20 Newsgroups training set for rapid visualization
 dataset_distribution = {
     'alt.atheism': 480, 'comp.graphics': 584, 'comp.os.ms-windows.misc': 591,
     'comp.sys.ibm.pc.hardware': 590, 'comp.sys.mac.hardware': 578, 'comp.windows.x': 593,
@@ -122,9 +146,6 @@ dataset_distribution = {
 # --- APP LAYOUT ---
 st.title("News Article Categorization Engine")
 
-# ==========================================
-# STEP 1: ARTICLE INPUT
-# ==========================================
 if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP pipelines.")
     st.subheader("Step 1: Article Details")
@@ -152,9 +173,6 @@ if st.session_state.step == 1:
             st.session_state.step = 2
             st.rerun()
 
-# ==========================================
-# STEP 2: MODEL SELECTION & PREDICTION
-# ==========================================
 elif st.session_state.step == 2:
     st.subheader("Step 2: Select Models to Compare")
     
@@ -172,9 +190,9 @@ elif st.session_state.step == 2:
     
     col1, col2 = st.columns(2)
     with col1:
-        model_1_choice = st.selectbox("Model 1", list(models.keys()), index=0)
+        model_1_choice = st.selectbox("Model 1", model_choices, index=0)
     with col2:
-        model_2_choice = st.selectbox("Model 2", list(models.keys()), index=1)
+        model_2_choice = st.selectbox("Model 2", model_choices, index=1 if len(model_choices) > 1 else 0)
         
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -195,15 +213,37 @@ elif st.session_state.step == 2:
             cleaned_text = clean_text(combined_raw_text)
             
             def get_inference(model_name):
-                vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
-                vec = vectorizers[vec_name]
-                mod = models[model_name]
+                # DistilBERT logic routing
+                if model_name == "DistilBERT (Deep Learning)":
+                    truncated_text = combined_raw_text[:2000] # Safe token limit
+                    results = bert_classifier(truncated_text)[0]
+                    
+                    probs = np.array([res['score'] for res in results])
+                    classes = []
+                    
+                    for res in results:
+                        label_str = res['label']
+                        if label_str.startswith('LABEL_'):
+                            label_idx = int(label_str.split('_')[-1])
+                            classes.append(CLASS_NAMES[label_idx])
+                        else:
+                            classes.append(label_str)
+                            
+                    classes = np.array(classes)
+                    prediction = classes[0]
+                    return prediction, probs, classes, None, "bert"
                 
-                vectorized_text = vec.transform([cleaned_text])
-                prediction = mod.predict(vectorized_text)[0]
-                probs = mod.predict_proba(vectorized_text)[0]
-                classes = mod.classes_
-                return prediction, probs, classes, vec, mod
+                # Original Scikit-Learn logic routing
+                else:
+                    vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
+                    vec = vectorizers[vec_name]
+                    mod = models[model_name]
+                    
+                    vectorized_text = vec.transform([cleaned_text])
+                    prediction = mod.predict(vectorized_text)[0]
+                    probs = mod.predict_proba(vectorized_text)[0]
+                    classes = mod.classes_
+                    return prediction, probs, classes, vec, mod
 
             pred_1, probs_1, classes_1, vec_1, mod_1 = get_inference(model_1_choice)
             pred_2, probs_2, classes_2, vec_2, mod_2 = get_inference(model_2_choice)
@@ -218,20 +258,19 @@ elif st.session_state.step == 2:
 
             st.markdown("---")
             
-            # Organize the heavy visualizations into tabs
             tab1, tab2, tab3 = st.tabs(["📊 Prediction Confidence", "☁️ Word Analysis", "📚 Dataset Insights"])
             
             # --- TAB 1: CONFIDENCE ---
             with tab1:
-                def get_top_5_df(probs, classes):
-                    top_5_idx = np.argsort(probs)[-5:][::-1]
-                    return pd.DataFrame({
-                        'Category': classes[top_5_idx],
-                        'Confidence (%)': probs[top_5_idx] * 100
-                    })
+                def get_top_5_df(probs, classes, is_bert):
+                    if is_bert:
+                        return pd.DataFrame({'Category': classes, 'Confidence (%)': probs * 100})
+                    else:
+                        top_5_idx = np.argsort(probs)[-5:][::-1]
+                        return pd.DataFrame({'Category': classes[top_5_idx], 'Confidence (%)': probs[top_5_idx] * 100})
 
-                df1_top5 = get_top_5_df(probs_1, classes_1)
-                df2_top5 = get_top_5_df(probs_2, classes_2)
+                df1_top5 = get_top_5_df(probs_1, classes_1, mod_1 == "bert")
+                df2_top5 = get_top_5_df(probs_2, classes_2, mod_2 == "bert")
 
                 vis_col1, vis_col2 = st.columns(2)
                 
@@ -259,27 +298,33 @@ elif st.session_state.step == 2:
                 
                 with feat_col1:
                     st.markdown(f"**Model 1 Word Importance ({pred_1})**")
-                    df_feat_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=15)
-                    fig_f1, ax_f1 = plt.subplots(figsize=(6, 4))
-                    sns.barplot(x="Weight", y="Word", data=df_feat_1, palette="mako", ax=ax_f1)
-                    plt.tight_layout()
-                    st.pyplot(fig_f1)
-                    
-                    st.markdown("**Model 1 Word Cloud**")
-                    df_wc_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=50)
-                    st.pyplot(generate_wordcloud(df_wc_1))
+                    if mod_1 == "bert":
+                        st.info("DistilBERT relies on deep contextual embeddings rather than strict word frequencies. Traditional WordClouds are not generated for this model.")
+                    else:
+                        df_feat_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=15)
+                        fig_f1, ax_f1 = plt.subplots(figsize=(6, 4))
+                        sns.barplot(x="Weight", y="Word", data=df_feat_1, palette="mako", ax=ax_f1)
+                        plt.tight_layout()
+                        st.pyplot(fig_f1)
+                        
+                        st.markdown("**Model 1 Word Cloud**")
+                        df_wc_1 = get_feature_importance(mod_1, vec_1, pred_1, top_n=50)
+                        st.pyplot(generate_wordcloud(df_wc_1))
 
                 with feat_col2:
                     st.markdown(f"**Model 2 Word Importance ({pred_2})**")
-                    df_feat_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=15)
-                    fig_f2, ax_f2 = plt.subplots(figsize=(6, 4))
-                    sns.barplot(x="Weight", y="Word", data=df_feat_2, palette="crest", ax=ax_f2)
-                    plt.tight_layout()
-                    st.pyplot(fig_f2)
-                    
-                    st.markdown("**Model 2 Word Cloud**")
-                    df_wc_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=50)
-                    st.pyplot(generate_wordcloud(df_wc_2))
+                    if mod_2 == "bert":
+                        st.info("DistilBERT relies on deep contextual embeddings rather than strict word frequencies. Traditional WordClouds are not generated for this model.")
+                    else:
+                        df_feat_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=15)
+                        fig_f2, ax_f2 = plt.subplots(figsize=(6, 4))
+                        sns.barplot(x="Weight", y="Word", data=df_feat_2, palette="crest", ax=ax_f2)
+                        plt.tight_layout()
+                        st.pyplot(fig_f2)
+                        
+                        st.markdown("**Model 2 Word Cloud**")
+                        df_wc_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=50)
+                        st.pyplot(generate_wordcloud(df_wc_2))
 
             # --- TAB 3: DATASET DISTRIBUTION ---
             with tab3:
