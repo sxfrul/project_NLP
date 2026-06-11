@@ -10,3 +10,4 @@ deep-translator
 wordcloud
 transformers
 torch
+torchvision
