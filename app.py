@@ -144,11 +144,11 @@ dataset_distribution = {
 }
 
 # --- APP LAYOUT ---
-st.title("News Article Categorization Engine")
+st.title("AI News Article Categorizer")
 
 if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP pipelines.")
-    st.subheader("Step 1: Article Details")
+    st.subheader("Fill in Article Details")
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
@@ -174,7 +174,7 @@ if st.session_state.step == 1:
             st.rerun()
 
 elif st.session_state.step == 2:
-    st.subheader("Step 2: Select Models to Compare")
+    st.subheader("Select AI Models to Compare")
     
     with st.spinner("Preparing text environment..."):
         display_subject = st.session_state.subject
@@ -204,7 +204,7 @@ elif st.session_state.step == 2:
             st.rerun()
             
     with col_btn_predict:
-        predict_clicked = st.button("Categorize ✨", use_container_width=True)
+        predict_clicked = st.button("Predict", use_container_width=True)
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
@@ -258,7 +258,7 @@ elif st.session_state.step == 2:
 
             st.markdown("---")
             
-            tab1, tab2, tab3 = st.tabs(["📊 Prediction Confidence", "☁️ Word Analysis", "📚 Dataset Insights"])
+            tab1, tab2, tab3 = st.tabs(["1. Prediction Confidence", "2. Word Analysis", "3. Dataset Insights"])
             
             # --- TAB 1: CONFIDENCE ---
             with tab1:
