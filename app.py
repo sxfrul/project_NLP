@@ -6,8 +6,6 @@ import seaborn as sns
 import joblib
 import re
 import nltk
-import json
-import os
 from datetime import datetime
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
@@ -40,35 +38,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- DATABASE SETUP (Local JSON) ---
-HISTORY_FILE = "article_history.json"
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return {} 
-
-def save_to_history(category, subject, content):
-    history = load_history()
-    # Convert numpy types to native Python types if necessary
-    category_str = str(category)
-    
-    if category_str not in history:
-        history[category_str] = []
-        
-    history[category_str].insert(0, {
-        "subject": subject,
-        "snippet": content[:120] + "...", 
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M")
-    })
-    
-    # Limit to 3 most recent articles per category
-    history[category_str] = history[category_str][:3]
-    
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f)
-
 # --- SESSION STATE INITIALIZATION ---
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -78,6 +47,26 @@ if "content" not in st.session_state:
     st.session_state.content = ""
 if "translate" not in st.session_state:
     st.session_state.translate = False
+# Initialize temporary session history
+if "history" not in st.session_state:
+    st.session_state.history = {}
+
+# --- DATABASE SETUP (Temporary Session State) ---
+def save_to_history(category, subject, content):
+    # Convert numpy types to native Python types if necessary
+    category_str = str(category)
+    
+    if category_str not in st.session_state.history:
+        st.session_state.history[category_str] = []
+        
+    st.session_state.history[category_str].insert(0, {
+        "subject": subject,
+        "snippet": content[:120] + "...", 
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M")
+    })
+    
+    # Limit to 3 most recent articles per category
+    st.session_state.history[category_str] = st.session_state.history[category_str][:3]
 
 CLASS_NAMES = [
     'alt.atheism', 'comp.graphics', 'comp.os.ms-windows.misc', 'comp.sys.ibm.pc.hardware',
@@ -202,9 +191,10 @@ if st.session_state.step == 1:
 
     # --- MINI NEWS SITE FEED ---
     st.markdown("---")
-    st.subheader("Recent Categorized News")
+    st.subheader("Recently Categorized (This Session)")
     
-    history = load_history()
+    # Load directly from session state instead of file
+    history = st.session_state.history
     
     if not history:
         st.info("No articles categorized yet. Be the first to classify one!")
