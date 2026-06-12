@@ -163,7 +163,8 @@ dataset_distribution = {
 st.title("AI News Article Categorizer")
 
 if st.session_state.step == 1:
-    st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP pipelines.")
+    st.markdown("Welcome! Let's sort your articles.")
+    st.markdown("This AI tool reads any news article, post, or snippet you provide and automatically figures out which topic it belongs to out of **20 different categories** (ranging from Space and Medicine to Politics, Autos, and Tech).")
     st.subheader("Fill in Article Details")
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
