@@ -6,12 +6,13 @@ import seaborn as sns
 import joblib
 import re
 import nltk
+import json
+import os
+from datetime import datetime
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from deep_translator import GoogleTranslator
 from wordcloud import WordCloud
-
-# NEW: Import Hugging Face pipeline
 from transformers import pipeline
 
 # --- PAGE CONFIGURATION & STYLING ---
@@ -39,6 +40,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- DATABASE SETUP (Local JSON) ---
+HISTORY_FILE = "article_history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return {} 
+
+def save_to_history(category, subject, content):
+    history = load_history()
+    # Convert numpy types to native Python types if necessary
+    category_str = str(category)
+    
+    if category_str not in history:
+        history[category_str] = []
+        
+    history[category_str].insert(0, {
+        "subject": subject,
+        "snippet": content[:120] + "...", 
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M")
+    })
+    
+    # Limit to 3 most recent articles per category
+    history[category_str] = history[category_str][:3]
+    
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f)
+
 # --- SESSION STATE INITIALIZATION ---
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -49,7 +79,6 @@ if "content" not in st.session_state:
 if "translate" not in st.session_state:
     st.session_state.translate = False
 
-# Class map for DistilBERT numeric labels
 CLASS_NAMES = [
     'alt.atheism', 'comp.graphics', 'comp.os.ms-windows.misc', 'comp.sys.ibm.pc.hardware',
     'comp.sys.mac.hardware', 'comp.windows.x', 'misc.forsale', 'rec.autos',
@@ -94,7 +123,6 @@ def load_assets():
 
 @st.cache_resource(show_spinner="Loading Hugging Face DistilBERT...")
 def load_bert_pipeline():
-    # IMPORTANT: Update this with your actual Hugging Face repo ID
     model_repo = "sxfrul/distilbert-news-categorizer" 
     try:
         classifier = pipeline("text-classification", model=model_repo, tokenizer=model_repo, top_k=5)
@@ -105,7 +133,6 @@ def load_bert_pipeline():
 vectorizers, models = load_assets()
 bert_classifier = load_bert_pipeline()
 
-# Add DistilBERT to the selection choices
 model_choices = list(models.keys()) + ["DistilBERT (Deep Learning)"]
 
 # --- HELPER FUNCTIONS FOR ADVANCED VISUALS ---
@@ -173,6 +200,37 @@ if st.session_state.step == 1:
             st.session_state.step = 2
             st.rerun()
 
+    # --- MINI NEWS SITE FEED ---
+    st.markdown("---")
+    st.subheader("📰 Recent Categorized News")
+    
+    history = load_history()
+    
+    if not history:
+        st.info("No articles categorized yet. Be the first to classify one!")
+    else:
+        active_categories = list(history.keys())[:5] 
+        tabs = st.tabs(active_categories)
+        
+        for idx, tab in enumerate(tabs):
+            category = active_categories[idx]
+            articles = history[category]
+            
+            with tab:
+                cols = st.columns(3) 
+                for i, col in enumerate(cols):
+                    if i < len(articles):
+                        article = articles[i]
+                        # Minimalist Card HTML: Square borders, solid background
+                        col.markdown(f"""
+                        <div style="border: 2px solid #333; padding: 15px; margin-bottom: 10px; background-color: #1E1E1E; border-radius: 0px;">
+                            <p style="font-size: 0.75em; color: #888; margin-bottom: 5px; text-transform: uppercase;">{category}</p>
+                            <h5 style="margin-top: 0px; margin-bottom: 10px; color: #FFF;">{article['subject']}</h5>
+                            <p style="font-size: 0.85em; color: #CCC; margin-bottom: 15px;">{article['snippet']}</p>
+                            <p style="font-size: 0.7em; color: #666; margin: 0px;">{article['date']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
 elif st.session_state.step == 2:
     st.subheader("Select AI Models to Compare")
     
@@ -213,9 +271,8 @@ elif st.session_state.step == 2:
             cleaned_text = clean_text(combined_raw_text)
             
             def get_inference(model_name):
-                # DistilBERT logic routing
                 if model_name == "DistilBERT (Deep Learning)":
-                    truncated_text = combined_raw_text[:2000] # Safe token limit
+                    truncated_text = combined_raw_text[:2000] 
                     results = bert_classifier(truncated_text)[0]
                     
                     probs = np.array([res['score'] for res in results])
@@ -233,7 +290,6 @@ elif st.session_state.step == 2:
                     prediction = classes[0]
                     return prediction, probs, classes, None, "bert"
                 
-                # Original Scikit-Learn logic routing
                 else:
                     vec_name = "TF-IDF" if "TF-IDF" in model_name else "BoW"
                     vec = vectorizers[vec_name]
@@ -248,8 +304,11 @@ elif st.session_state.step == 2:
             pred_1, probs_1, classes_1, vec_1, mod_1 = get_inference(model_1_choice)
             pred_2, probs_2, classes_2, vec_2, mod_2 = get_inference(model_2_choice)
             
+            # --- SAVE TO HISTORY DATABASE ---
+            save_to_history(pred_1, display_subject, display_content)
+            
             st.markdown("---")
-            st.markdown("### Final Predictions")
+            st.markdown("### Model Predictions")
             res_col1, res_col2 = st.columns(2)
             with res_col1:
                 st.success(f"**{model_1_choice}** predicts:\n### {pred_1}")
