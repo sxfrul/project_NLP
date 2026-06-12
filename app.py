@@ -191,13 +191,13 @@ if st.session_state.step == 1:
 
     # --- MINI NEWS SITE FEED ---
     st.markdown("---")
-    st.subheader("Recently Categorized (This Session)")
+    st.subheader("Recently Categorized")
     
     # Load directly from session state instead of file
     history = st.session_state.history
     
     if not history:
-        st.info("No articles categorized yet. Be the first to classify one!")
+        st.info("No articles categorized yet. Start by filling in your article details!")
     else:
         active_categories = list(history.keys())[:5] 
         tabs = st.tabs(active_categories)
