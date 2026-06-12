@@ -6,9 +6,6 @@ import seaborn as sns
 import joblib
 import re
 import nltk
-import json
-import os
-from datetime import datetime
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from deep_translator import GoogleTranslator
@@ -39,35 +36,6 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-
-# --- DATABASE SETUP (Local JSON) ---
-HISTORY_FILE = "article_history.json"
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return {} 
-
-def save_to_history(category, subject, content):
-    history = load_history()
-    # Convert numpy types to native Python types if necessary
-    category_str = str(category)
-    
-    if category_str not in history:
-        history[category_str] = []
-        
-    history[category_str].insert(0, {
-        "subject": subject,
-        "snippet": content[:120] + "...", 
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M")
-    })
-    
-    # Limit to 3 most recent articles per category
-    history[category_str] = history[category_str][:3]
-    
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f)
 
 # --- SESSION STATE INITIALIZATION ---
 if "step" not in st.session_state:
@@ -123,7 +91,8 @@ def load_assets():
 
 @st.cache_resource(show_spinner="Loading Hugging Face DistilBERT...")
 def load_bert_pipeline():
-    model_repo = "sxfrul/distilbert-news-categorizer" 
+    # IMPORTANT: Update this with your actual Hugging Face repo ID
+    model_repo = "your-username/distilbert-news-categorizer" 
     try:
         classifier = pipeline("text-classification", model=model_repo, tokenizer=model_repo, top_k=5)
         return classifier
@@ -171,11 +140,11 @@ dataset_distribution = {
 }
 
 # --- APP LAYOUT ---
-st.title("AI News Article Categorizer")
+st.title("News Article Categorization Engine")
 
 if st.session_state.step == 1:
     st.markdown("Classify raw text into 20 distinct newsgroup categories using NLP pipelines.")
-    st.subheader("Fill in Article Details")
+    st.subheader("Step 1: Article Details")
     
     subject_input = st.text_input("Subject Line", value=st.session_state.subject, placeholder="e.g. Next-gen ion thrusters")
     content_input = st.text_area("Article Body", height=200, value=st.session_state.content, placeholder="Paste the full text of the article here...")
@@ -200,39 +169,8 @@ if st.session_state.step == 1:
             st.session_state.step = 2
             st.rerun()
 
-    # --- MINI NEWS SITE FEED ---
-    st.markdown("---")
-    st.subheader("📰 Recent Categorized News")
-    
-    history = load_history()
-    
-    if not history:
-        st.info("No articles categorized yet. Be the first to classify one!")
-    else:
-        active_categories = list(history.keys())[:5] 
-        tabs = st.tabs(active_categories)
-        
-        for idx, tab in enumerate(tabs):
-            category = active_categories[idx]
-            articles = history[category]
-            
-            with tab:
-                cols = st.columns(3) 
-                for i, col in enumerate(cols):
-                    if i < len(articles):
-                        article = articles[i]
-                        # Minimalist Card HTML: Square borders, solid background
-                        col.markdown(f"""
-                        <div style="border: 2px solid #333; padding: 15px; margin-bottom: 10px; background-color: #1E1E1E; border-radius: 0px;">
-                            <p style="font-size: 0.75em; color: #888; margin-bottom: 5px; text-transform: uppercase;">{category}</p>
-                            <h5 style="margin-top: 0px; margin-bottom: 10px; color: #FFF;">{article['subject']}</h5>
-                            <p style="font-size: 0.85em; color: #CCC; margin-bottom: 15px;">{article['snippet']}</p>
-                            <p style="font-size: 0.7em; color: #666; margin: 0px;">{article['date']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-
 elif st.session_state.step == 2:
-    st.subheader("Select AI Models to Compare")
+    st.subheader("Step 2: Select Models to Compare")
     
     with st.spinner("Preparing text environment..."):
         display_subject = st.session_state.subject
@@ -262,7 +200,7 @@ elif st.session_state.step == 2:
             st.rerun()
             
     with col_btn_predict:
-        predict_clicked = st.button("Predict", use_container_width=True)
+        predict_clicked = st.button("Categorize ✨", use_container_width=True)
         
     if predict_clicked:
         with st.spinner("Analyzing text and generating dynamic visualizations..."):
@@ -272,7 +210,7 @@ elif st.session_state.step == 2:
             
             def get_inference(model_name):
                 if model_name == "DistilBERT (Deep Learning)":
-                    truncated_text = combined_raw_text[:2000] 
+                    truncated_text = combined_raw_text[:2000]
                     results = bert_classifier(truncated_text)[0]
                     
                     probs = np.array([res['score'] for res in results])
@@ -304,23 +242,28 @@ elif st.session_state.step == 2:
             pred_1, probs_1, classes_1, vec_1, mod_1 = get_inference(model_1_choice)
             pred_2, probs_2, classes_2, vec_2, mod_2 = get_inference(model_2_choice)
             
-            # --- SAVE TO HISTORY DATABASE ---
-            save_to_history(pred_1, display_subject, display_content)
-            
             st.markdown("---")
-            st.markdown("### Model Predictions")
-            res_col1, res_col2 = st.columns(2)
-            with res_col1:
-                st.success(f"**{model_1_choice}** predicts:\n### {pred_1}")
-            with res_col2:
-                st.info(f"**{model_2_choice}** predicts:\n### {pred_2}")
+            
+            # --- TABS LAYOUT ---
+            tab_pred, tab_conf, tab_word, tab_data = st.tabs([
+                "🎯 Final Prediction", 
+                "📊 Prediction Confidence", 
+                "☁️ Word Analysis", 
+                "📚 Dataset Insights"
+            ])
+            
+            # --- TAB 1: FINAL PREDICTION ---
+            with tab_pred:
+                st.markdown("<br>", unsafe_allow_html=True)
+                res_col1, res_col2 = st.columns(2)
+                with res_col1:
+                    st.success(f"**{model_1_choice}** predicts:\n### {pred_1}")
+                with res_col2:
+                    st.info(f"**{model_2_choice}** predicts:\n### {pred_2}")
 
-            st.markdown("---")
-            
-            tab1, tab2, tab3 = st.tabs(["1. Prediction Confidence", "2. Word Analysis", "3. Dataset Insights"])
-            
-            # --- TAB 1: CONFIDENCE ---
-            with tab1:
+            # --- TAB 2: CONFIDENCE ---
+            with tab_conf:
+                st.markdown("<br>", unsafe_allow_html=True)
                 def get_top_5_df(probs, classes, is_bert):
                     if is_bert:
                         return pd.DataFrame({'Category': classes, 'Confidence (%)': probs * 100})
@@ -349,9 +292,9 @@ elif st.session_state.step == 2:
                     plt.tight_layout()
                     st.pyplot(fig2)
 
-            # --- TAB 2: WORD ANALYSIS ---
-            with tab2:
-                st.markdown("Explore which specific words heavily influenced the model's final decision for its predicted category.")
+            # --- TAB 3: WORD ANALYSIS ---
+            with tab_word:
+                st.markdown("<br>Explore which specific words heavily influenced the model's final decision for its predicted category.", unsafe_allow_html=True)
                 
                 feat_col1, feat_col2 = st.columns(2)
                 
@@ -385,9 +328,9 @@ elif st.session_state.step == 2:
                         df_wc_2 = get_feature_importance(mod_2, vec_2, pred_2, top_n=50)
                         st.pyplot(generate_wordcloud(df_wc_2))
 
-            # --- TAB 3: DATASET DISTRIBUTION ---
-            with tab3:
-                st.markdown("**Original Training Data Distribution (20 Newsgroups)**")
+            # --- TAB 4: DATASET DISTRIBUTION ---
+            with tab_data:
+                st.markdown("<br>**Original Training Data Distribution (20 Newsgroups)**", unsafe_allow_html=True)
                 st.write("This chart visualizes the balanced nature of the foundational training dataset.")
                 
                 dist_df = pd.DataFrame(list(dataset_distribution.items()), columns=['Category', 'Document Count'])
